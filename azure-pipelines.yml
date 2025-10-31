@@ -1,68 +1,55 @@
-# Pipeline Build completo con Gradle, SonarQube y Seguridad
+# Gradle
+# Build your Java project and run tests with Gradle using a Gradle wrapper script.
+# Add steps that analyze code, save build artifacts, deploy, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/java
+
 trigger:
-- master
+- main
 
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: ubuntu-latest
 
 steps:
-# 1. Preparar análisis de SonarQube
-- task: SonarQubePrepare@5
-  inputs:
-    SonarQube: 'YourSonarServiceConnection'
-    scannerMode: 'Other'
-    extraProperties: |
-      sonar.projectKey=your_project_key
-      sonar.projectName=your_project_name
-
-# 2. Compilar con Gradle
 - task: Gradle@3
   inputs:
+    gradleWrapperFile: 'gradlew'  # Path to your Gradle wrapper
+    tasks: 'clean build'  # Replace with the tasks you want to run
+    options: '-Xmx3072m' 
+    publishJUnitResults: true
+    testResultsFiles: '**/TEST-*.xml'  # Updated pattern for test result files
+    javaHomeOption: 'JDKVersion'
+    jdkVersionOption: '1.11'  # Replace with your JDK version
+    jdkArchitectureOption: 'x64'
+
+
+- task: Gradle@4
+  inputs:
     gradleWrapperFile: 'gradlew'
-    tasks: 'build'
+    tasks: 'test'
     publishJUnitResults: true
     testResultsFiles: '**/TEST-*.xml'
     javaHomeOption: 'JDKVersion'
-    jdkVersionOption: '1.11'
-    jdkArchitectureOption: 'x64'
+    sonarQubeRunAnalysis: false
+    spotBugsAnalysis: false
 
-# 3. Publicar resultados de pruebas
-- task: PublishTestResults@2
+- task: CopyFiles@2
   inputs:
-    testResultsFiles: '**/TEST-*.xml'
-    testRunTitle: 'JUnit Results'
+    SourceFolder: '/build/libs'
+    Contents: |
+      *jar
+      !*plain
+    TargetFolder: '/deployment/app'
 
-# 4. Analizar código con SonarQube
-- task: SonarQubeAnalyze@5
-
-# 5. Romper Quality Gate si falla
-- task: SonarQubePublish@5
-  inputs:
-    pollingTimeoutSec: '300'
-
-# 6. Copiar artefacto JAR
-- script: |
-    mkdir -p $(Build.ArtifactStagingDirectory)/jar
-    cp build/libs/*.jar $(Build.ArtifactStagingDirectory)/jar/
-  displayName: 'Copy JAR'
-
-# 7. Comprimir artefactos
 - task: ArchiveFiles@2
   inputs:
-    rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/jar'
-    includeRootFolder: false
+    rootFolderOrFile: '$(Build.BinariesDirectory)'
+    includeRootFolder: true
     archiveType: 'zip'
-    archiveFile: '$(Build.ArtifactStagingDirectory)/build-$(Build.BuildId).zip'
+    archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
     replaceExistingArchive: true
 
-# 8. Publicar artefactos
 - task: PublishBuildArtifacts@1
   inputs:
-    pathToPublish: '$(Build.ArtifactStagingDirectory)'
-    artifactName: 'drop'
-
-# 9. Escaneo de seguridad (opcional)
-- script: |
-    echo "Running security analysis..."
-    # Aquí podrías usar herramientas como OWASP Dependency Check o Trivy
-  displayName: 'Run Security'
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'Artifacts'
+    publishLocation: 'Container'
